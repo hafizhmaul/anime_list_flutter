@@ -1,5 +1,4 @@
 import 'package:anime_list/constants/colors.dart';
-import 'package:anime_list/data/dummy_airing.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:jikan_api/jikan_api.dart';
@@ -14,14 +13,16 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   bool isFavorited = true;
   late Future<List<Anime>> popularAnimeList;
+  late Future<List<Anime>> airingAnimeList;
 
   @override
   void initState() {
     super.initState();
-    popularAnimeList = topAnime();
+    popularAnimeList = fetchTopAnime();
+    airingAnimeList = fetchAiringAnime();
   }
 
-  Future<List<Anime>> topAnime() async {
+  Future<List<Anime>> fetchTopAnime() async {
     var baseUrl = 'https://api.jikan.moe/v4';
     var endpoint = '/top/anime';
 
@@ -31,12 +32,28 @@ class _HomePageState extends State<HomePage> {
         queryParameters: {'type': 'tv', 'filter': 'bypopularity'},
       );
 
-      List<dynamic> dataArray = response.data['data'];
-      List<Anime> animeList =
-          dataArray.map((item) => Anime.fromJson(item)).toList();
-      return animeList;
+      List<dynamic> dataPopularAnime = response.data['data'];
+      List<Anime> animeListPopular =
+          dataPopularAnime.map((item) => Anime.fromJson(item)).toList();
+      return animeListPopular;
     } catch (e) {
-      print('Error: $e');
+      throw Exception('$e');
+    }
+  }
+
+  Future<List<Anime>> fetchAiringAnime() async {
+    var baseUrl = 'https://api.jikan.moe/v4';
+    var endpoint = '/seasons/now';
+
+    try {
+      var response = await Dio().get('$baseUrl$endpoint');
+
+      List<dynamic> dataAiringAnime = response.data['data'];
+      List<Anime> animeListAiring =
+          dataAiringAnime.map((item) => Anime.fromJson(item)).toList();
+
+      return animeListAiring;
+    } catch (e) {
       throw Exception('$e');
     }
   }
@@ -76,24 +93,7 @@ class _HomePageState extends State<HomePage> {
               child: SingleChildScrollView(
                 child: Column(
                   children: animeList.map((item) {
-                    return Column(children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 120,
-                            height: 180,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10.0),
-                              image: DecorationImage(
-                                  image: NetworkImage(item.imageUrl),
-                                  fit: BoxFit.cover,
-                                  alignment: Alignment.topCenter),
-                            ),
-                          ),
-                        ],
-                      )
-                    ]);
+                    return cardAnimePopular(item);
                   }).toList(),
                 ),
               ),
@@ -102,6 +102,76 @@ class _HomePageState extends State<HomePage> {
         }
       },
     );
+  }
+
+  Column cardAnimePopular(Anime item) {
+    return Column(children: [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 120,
+            height: 180,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10.0),
+              image: DecorationImage(
+                  image: NetworkImage(item.imageUrl),
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 15.0),
+            child: Column(
+              children: [
+                SizedBox(
+                  width: 200,
+                  child: Text(
+                    item.title,
+                    textAlign: TextAlign.left,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                    style: const TextStyle(
+                        color: primaryWhite,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(
+                  height: 10,
+                ),
+                SizedBox(
+                  width: 200,
+                  child: Text(
+                    '${item.year} \u{25CF} ${item.episodes} Episodes',
+                    textAlign: TextAlign.left,
+                    style: const TextStyle(color: lightGray, fontSize: 12.0),
+                  ),
+                ),
+                const SizedBox(
+                  height: 10,
+                ),
+                SizedBox(
+                  width: 200,
+                  height: 110,
+                  child: Text(
+                    item.synopsis ?? '',
+                    textWidthBasis: TextWidthBasis.parent,
+                    maxLines: 7,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.left,
+                    style: const TextStyle(color: lightGray, fontSize: 12.0),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(
+        height: 20.0,
+      )
+    ]);
   }
 
   Padding headerPopularAnime() {
@@ -144,56 +214,77 @@ class _HomePageState extends State<HomePage> {
         ),
         SizedBox(
           height: 250,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: animeListDummy.length,
-            itemBuilder: (BuildContext context, int index) {
-              var item = animeListDummy[index];
-              return Row(
-                children: [
-                  SizedBox(
-                    width: index == 0 ? 20 : 0,
+          child: FutureBuilder<List<Anime>>(
+            future: airingAnimeList,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              } else if (snapshot.hasError) {
+                return Text('Error: ${snapshot.error}');
+              } else {
+                List<Anime> airingList = snapshot.data!;
+                return SizedBox(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10.0),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: cardAiringList(airingList),
+                    ),
                   ),
-                  Column(
-                    children: [
-                      Container(
-                        width: 140,
-                        height: 180,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10.0),
-                          image: DecorationImage(
-                              image: NetworkImage(item.thumbnail),
-                              fit: BoxFit.cover,
-                              alignment: Alignment.topCenter),
-                        ),
-                      ),
-                      const SizedBox(
-                        height: 10,
-                      ),
-                      SizedBox(
-                        width: 140,
-                        child: Text(
-                          item.title,
-                          textAlign: TextAlign.center,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 2,
-                          style: const TextStyle(
-                              color: primaryWhite,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(
-                    width: 15.0,
-                  )
-                ],
-              );
+                );
+              }
             },
           ),
         ),
       ],
+    );
+  }
+
+  Row cardAiringList(List<Anime> airingList) {
+    return Row(
+      children: airingList.map((item) {
+        return Row(
+          children: [
+            const SizedBox(
+              width: 10.0,
+            ),
+            Column(
+              children: [
+                Container(
+                  width: 140,
+                  height: 180,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10.0),
+                    image: DecorationImage(
+                        image: NetworkImage(item.imageUrl),
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter),
+                  ),
+                ),
+                const SizedBox(
+                  height: 10,
+                ),
+                SizedBox(
+                  width: 140,
+                  child: Text(
+                    item.title,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                    style: const TextStyle(
+                        color: primaryWhite,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(
+              width: 5.0,
+            )
+          ],
+        );
+      }).toList(),
     );
   }
 
@@ -249,13 +340,11 @@ class _HomePageState extends State<HomePage> {
                         borderRadius: BorderRadius.circular(20.0),
                       ),
                       backgroundColor: lightYellow),
-                  onPressed: () {
-                    print(popularAnimeList);
-                  },
+                  onPressed: () {},
                   child: const Text(
                     'See Detail',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w400, color: primaryWhite),
+                    style:
+                        TextStyle(fontWeight: FontWeight.w400, color: darkGray),
                   ),
                 ),
               ],
